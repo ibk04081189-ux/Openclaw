@@ -32,10 +32,11 @@ for ARTIST_ENTRY in "${ARTISTS[@]}"; do
 
     URL_EPLUS="https://eplus.jp/sf/search?block=true&keyword=${ARTIST_KEYWORD}"
 
-    PROMPT="あなたはweb_fetchツールを使って次のURLにアクセスしてください: ${URL_EPLUS}
-そのページに掲載されている「${ARTIST_NAME}」の2026年のライブスケジュールやチケット情報を調べて、Discordユーザーに分かりやすくリストアップして報告してください。アーティスト名「${ARTIST_NAME}」を冒頭に必ず明記してください。
-もし2026年の情報が見当たらない場合は、直近の最新情報があればそれを伝えたうえで、『2026年の情報はまだ掲載されていません』と添えてください。
-ページにアクセスできない場合は、web_searchツールで「${ARTIST_NAME} ライブ 2026 チケット」を検索して情報を補完してください。"
+    PROMPT="あなたはweb_searchツールとweb_fetchツールを使用して、「${ARTIST_NAME}」の2026年のライブチケット販売情報を調べてください。
+具体的には、イープラス(eplus.jp)、チケットぴあ(t.pia.jp)、ローチケ(l-tike.com)などの主要チケット販売サイトを横断的に検索し、現在販売中または販売予定の情報をDiscordユーザーに分かりやすくリストアップして報告してください。
+アーティスト名「${ARTIST_NAME}」を冒頭に必ず明記し、各公演の『日程・会場・チケット販売サイト（イープラス/ぴあ/ローチケ等）・受付状況（先行受付中/一般発売中/受付終了等）』を箇条書きでリストアップしてください。
+もし新しい情報が見当たらない場合は、直近の最新情報があればそれを伝えたうえで、『2026年の情報はまだ掲載されていません』と添えてください。
+イープラス(eplus.jp)の直接検索用として、次のURLも確認してください: ${URL_EPLUS}"
 
     # 2. AI要約
     echo "Generating AI summary for $ARTIST_NAME..."
@@ -47,9 +48,9 @@ for ARTIST_ENTRY in "${ARTISTS[@]}"; do
     if [ -n "$AI_REPLY" ]; then
         # 4. Discordに送信
         openclaw message send --channel discord --target "$DISCORD_CHANNEL" --message "$AI_REPLY"
-        echo "✅ Message delivered for $ARTIST_NAME"
+        echo "[SUCCESS] Message delivered for $ARTIST_NAME"
     else
-        echo "⚠️  Failed to extract AI reply for $ARTIST_NAME"
+        echo "[ERROR] Failed to extract AI reply for $ARTIST_NAME"
     fi
 
     # API制限対策: アーティスト間に2秒の間隔を置く
@@ -57,4 +58,4 @@ for ARTIST_ENTRY in "${ARTISTS[@]}"; do
 done
 
 echo ""
-echo "✅ All artists processed!"
+echo "[INFO] All artists processed!"
