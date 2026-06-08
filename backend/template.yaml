@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: OpenClaw - Serverless Automation Backend
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures: [arm64]
+    Timeout: 60
+    MemorySize: 256
+    Environment:
+      Variables:
+        ARTISTS_TABLE: !Ref ArtistsTable
+        GEMINI_API_KEY_PARAM: /openclaw/gemini-api-key
+        DISCORD_WEBHOOK_PARAM: /openclaw/discord-webhook-url
+        TICKET_MONITOR_SCHEDULE_NAME: openclaw-ticket-monitor-schedule
+        REGION: !Ref AWS::Region
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: "'*'"
+
+Resources:
+
+  # ─────────────────────────────────────────
+  # DynamoDB
+  # ─────────────────────────────────────────
+  ArtistsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: openclaw-artists
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: artistId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: artistId
+          KeyType: HASH
+
+  # ─────────────────────────────────────────
+  # IAM Role for Lambda
+  # ─────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: openclaw-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: openclaw-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt ArtistsTable.Arn
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/openclaw/*
+              - Effect: Allow
+                Action:
+                  - scheduler:GetSchedule
+                  - scheduler:UpdateSchedule
+                Resource:
+                  - !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/openclaw-*
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/openclaw-*
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:openclaw-*
+
+  # ─────────────────────────────────────────
+  # Lambda: Artists CRUD
+  # ─────────────────────────────────────────
+  ArtistsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: openclaw-artists
+      CodeUri: functions/artists/
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        GetArtists:
+          Type: Api
+          Properties:
+            Path: /artists
+            Method: GET
+        CreateArtist:
+          Type: Api
+          Properties:
+            Path: /artists
+            Method: POST
+        DeleteArtist:
+          Type: Api
+          Properties:
+            Path: /artists/{artistId}
+            Method: DELETE
+        RunArtist:
+          Type: Api
+          Properties:
+            Path: /artists/{artistId}/run
+            Method: POST
+        GetSettings:
+          Type: Api
+          Properties:
+            Path: /settings
+            Method: GET
+        UpdateSettings:
+          Type: Api
+          Properties:
+            Path: /settings
+            Method: POST
+        UpdateSchedule:
+          Type: Api
+          Properties:
+            Path: /settings/schedule
+            Method: POST
+
+  # ─────────────────────────────────────────
+  # Lambda: Ticket Monitor
+  # ─────────────────────────────────────────
+  TicketMonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: openclaw-ticket-monitor
+      CodeUri: functions/ticket_monitor/
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 120
+      Events:
+        ScheduledRun:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(1 hour)
+            State: ENABLED
+            Name: openclaw-ticket-monitor-schedule
+
+
+
+Outputs:
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod
+  ArtistsTableName:
+    Description: DynamoDB table name
+    Value: !Ref ArtistsTable

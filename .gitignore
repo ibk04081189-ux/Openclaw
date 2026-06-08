@@ -1,5 +1,14 @@
-# Logs and caches
-logs/
+# CLI logs and caches
+cli/logs/
+
+# Frontend dependencies and builds
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# AWS SAM Build
+backend/.aws-sam/
 
 # OS generated files
 .DS_Store

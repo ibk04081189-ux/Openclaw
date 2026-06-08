@@ -1,0 +1,7 @@
+{
+  "httpMethod": "GET",
+  "path": "/artists",
+  "headers": {},
+  "queryStringParameters": null,
+  "body": null
+}

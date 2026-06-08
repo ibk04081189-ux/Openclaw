@@ -1,17 +1,38 @@
-# OpenClaw - ライブチケット監視自動化システム
+# OpenClaw - ライブチケット監視自動化プラットフォーム
 
-OpenClaw CLI (`openclaw`) を活用した、ライブチケット情報の自動監視・Discord通知システムです。  
-AIエージェントがチケット販売サイトを定期的に確認し、新着情報を集約してDiscordへ自動通知します。
+本プロジェクトは、ライブチケット情報の自動監視・Discord通知を行う統合プラットフォームです。ローカルまたはサーバー上で実行可能なCLIスクリプトに加え、管理用のWebフロントエンド（React）およびAWSサーバーレスバックエンド（AWS SAM）を同一リポジトリに内包したモノレポ構成となっています。
 
 ## システム概要
 
+システムは以下の3つのコンポーネントで構成されています。
+
 ```text
-openclaw (AIエージェントCLI)
-    ├── agent         -> AIエージェントを実行（Web検索およびFetch対応）
-    └── message send  -> Discordチャンネルにメッセージ送信
+openclaw/
+├── cli/          # 監視実行スクリプト（ローカル/サーバー実行用）
+├── frontend/     # Web管理画面（React / Vite）
+└── backend/      # サーバーレスバックエンド（AWS SAM）
 ```
 
-本システムは以下のフローで動作します：
+### アーキテクチャ
+
+#### 1. Web / SAMバックエンド構成
+Web管理画面から監視対象アーティストを追加・編集し、AWS上でスケジュール実行を行います。
+
+```text
+[ユーザー] -> [Web管理画面 (React/Vite)]
+                  | (HTTPS / REST API)
+                  v
+         [API Gateway]
+                  |
+                  v
+         [Lambda (openclaw-artists)] <-> [DynamoDB (openclaw-artists)]
+                                                 ^
+                                                 |
+[EventBridge Scheduler] -> [Lambda (openclaw-ticket-monitor)] -> [Gemini API / Discord]
+```
+
+#### 2. CLI構成
+ローカルPCや仮想サーバーのcronを利用し、シンプルにコマンドラインから監視を実行します。
 
 ```text
 [シェルスクリプト] -> (1) プロンプト生成
@@ -20,63 +41,90 @@ openclaw (AIエージェントCLI)
                   -> (4) openclaw message send によるDiscordへの通知送信
 ```
 
+---
+
 ## ディレクトリ構成
 
 ```text
 openclaw/
-├── .gitignore             # Git除外設定
-├── README.md              # 本ファイル
-└── ticket_monitor.sh      # アーティストのチケット情報を監視してDiscordへ通知するスクリプト
-```
-
-## スクリプト詳細
-
-### `ticket_monitor.sh` - チケット情報モニタリング
-
-指定されたアーティストのチケット販売サイト（イープラス、チケットぴあ、ローチケなど）をAIエージェントが巡回し、現在販売中または販売予定のライブ・チケット情報を抽出します。
-
-| 項目 | 内容 |
-|------|------|
-| トリガー | 手動実行、または cron による定期実行 |
-| AI ツール | `web_fetch` / `web_search` |
-| 監視ソース | イープラス、チケットぴあ、ローチケ等の主要プレイガイド |
-| 通知先 | Discord チャンネル |
-| 対象アーティスト | スクリプト内の `ARTISTS` 配列で管理 |
-| レート制限対策 | 複数アーティスト処理時に `sleep 2` を挿入 |
-
-**実行方法:**
-
-```bash
-bash ticket_monitor.sh
-```
-
-**アーティストの追加方法:**
-
-`ticket_monitor.sh` 内の `ARTISTS` 配列に、以下の形式で要素を追加します：
-
-```bash
-ARTISTS=(
-    "SUPER BEAVER|SUPER%20BEAVER"
-    "アーティスト名|URLエンコード済み検索キーワード"
-)
+├── cli/
+│   ├── ticket_monitor.sh        # チケット情報監視スクリプト
+│   └── logs/                    # 一時キャッシュログ（Git除外）
+├── frontend/
+│   ├── src/                     # React ソースコード
+│   ├── public/                  # 静的アセット
+│   ├── index.html               # エントリーHTML
+│   ├── package.json             # フロントエンド依存関係
+│   └── vite.config.js           # Vite設定
+└── backend/
+    ├── template.yaml            # AWS SAM テンプレート定義ファイル
+    └── functions/
+        ├── artists/             # 管理用API担当のLambda関数（Node.js）
+        └── ticket_monitor/      # スクレイピング・要約・通知担当のLambda関数（Node.js）
 ```
 
 ---
 
-## 開発環境および依存関係
+## 各コンポーネントのセットアップ
 
-| ツール/環境 | 用途 |
-|--------|------|
-| `openclaw` | AIエージェント実行・メッセージ送信用のCLIツール |
-| `node` | JSONレスポンスからテキストデータを抽出する際のスクリプト実行 |
-| `bash` | モニタリングスクリプトの実行シェル |
+### CLIの実行
 
-## OpenClaw について
+1. **移動**
+   ```bash
+   cd cli
+   ```
 
-OpenClaw は、AIエージェントをCLIから操作できるツールです。DiscordやTelegramなどの外部チャットツールと連携し、WebSocket Gatewayを経由してAIエージェントを管理・実行します。詳細な設定や利用可能なコマンドについては、公式ドキュメントを参照してください。
+2. **実行**
+   ```bash
+   bash ticket_monitor.sh
+   ```
 
-```bash
-openclaw --help       # コマンド一覧の表示
-openclaw agent --help # エージェント実行オプションの表示
-openclaw doctor       # 接続状態のヘルスチェック
-```
+3. **監視アーティストの編集**
+   `ticket_monitor.sh` 内の `ARTISTS` 配列に対象を追加します。
+   ```bash
+   ARTISTS=(
+       "SUPER BEAVER|SUPER%20BEAVER"
+       "アーティスト名|URLエンコード済み検索キーワード"
+   )
+   ```
+
+### バックエンドのデプロイ (AWS SAM)
+
+AWS CLI および AWS SAM CLI がセットアップされている必要があります。
+
+1. **依存関係のインストール**
+   ```bash
+   cd backend/functions/artists && npm install
+   cd ../ticket_monitor && npm install
+   ```
+
+2. **ビルドとデプロイ**
+   ```bash
+   cd ../../
+   sam build
+   sam deploy --guided
+   ```
+
+3. **パラメータ設定**
+   以下のパラメータを AWS Systems Manager (SSM) Parameter Store に登録してください。
+   - `/openclaw/gemini-api-key`
+   - `/openclaw/discord-webhook-url`
+
+### フロントエンドのローカル開発
+
+1. **依存関係のインストール**
+   ```bash
+   cd frontend && npm install
+   ```
+
+2. **環境変数の設定**
+   `frontend/.env.local` を作成し、デプロイしたAPI GatewayのURLを指定します。
+   ```env
+   VITE_API_BASE_URL=https://<your-api-id>.execute-api.<region>.amazonaws.com/Prod
+   ```
+
+3. **起動とビルド**
+   ```bash
+   npm run dev      # 開発サーバー起動
+   npm run build    # 本番ビルド
+   ```
